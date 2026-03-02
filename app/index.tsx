@@ -48,6 +48,125 @@ const INJECTED_JS = `
     // Smooth scrolling
     document.documentElement.style.scrollBehavior = 'smooth';
 
+    // ===== POPUP / MODAL BLOCKER =====
+    function closePopups() {
+      // Common popup close button selectors
+      var closeSelectors = [
+        '.popup-close', '.modal-close', '.close-btn', '.close-button',
+        '.btn-close', '[data-dismiss="modal"]', '[aria-label="Close"]',
+        '.dismiss', '.popup .close', '.modal .close',
+        '.newsletter-close', '.newsletter-popup .close',
+        '.overlay-close', '.lightbox-close',
+        '.mfp-close', '.fancybox-close', '.fancybox-close-small',
+        '.swal2-close', '.noty_close_button',
+        '.pum-close', '.popmake-close',
+        '.mc-closeModal', '.mc-modal-close',
+        '#close-popup', '#popup-close', '#modal-close',
+        '.coupon-close', '.promo-close', '.offer-close',
+        '.exit-intent-close', '.welcome-close',
+        'button[class*="close"]', 'a[class*="close"]',
+        'span[class*="close"]', 'div[class*="close"]',
+        '.tp-close', '.rev-close',
+        '.sg-popup-close', '.sgpb-popup-close-button',
+        '.om-close', '.optinmonster-close',
+        '.hustle-button-close',
+        '.popup-overlay .close', '.modal-overlay .close'
+      ];
+
+      closeSelectors.forEach(function(sel) {
+        try {
+          var els = document.querySelectorAll(sel);
+          els.forEach(function(el) { el.click(); });
+        } catch(e) {}
+      });
+
+      // Hide common popup/modal containers by selector
+      var hideSelectors = [
+        '.modal-backdrop', '.popup-overlay', '.modal-overlay',
+        '.overlay', '.popup-container', '.modal-container',
+        '[class*="popup"]:not(body):not(html)', '[class*="modal"]:not(body):not(html)',
+        '[id*="popup"]', '[id*="modal"]',
+        '.fancybox-overlay', '.mfp-bg', '.mfp-wrap',
+        '.swal2-container', '.noty_layout',
+        '.pum-overlay', '.popmake-overlay',
+        '.mc-modal', '.sgpb-popup-overlay',
+        '.om-holder', '.optinmonster',
+        '.hustle-popup', '.hustle-modal',
+        '[class*="newsletter-popup"]', '[class*="subscribe-popup"]',
+        '[class*="coupon-popup"]', '[class*="promo-popup"]',
+        '[class*="welcome-popup"]', '[class*="exit-popup"]',
+        '[class*="lightbox"]', '[class*="dialog"]'
+      ];
+
+      hideSelectors.forEach(function(sel) {
+        try {
+          var els = document.querySelectorAll(sel);
+          els.forEach(function(el) {
+            if (el && el.offsetParent !== null) {
+              var rect = el.getBoundingClientRect();
+              var isOverlay = (
+                rect.width > window.innerWidth * 0.3 &&
+                rect.height > window.innerHeight * 0.3
+              ) || (
+                window.getComputedStyle(el).position === 'fixed'
+              ) || (
+                window.getComputedStyle(el).position === 'absolute' &&
+                parseInt(window.getComputedStyle(el).zIndex) > 100
+              );
+              if (isOverlay) {
+                el.style.display = 'none';
+                el.style.visibility = 'hidden';
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
+              }
+            }
+          });
+        } catch(e) {}
+      });
+
+      // Remove body scroll lock that popups often set
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.classList.remove('modal-open', 'popup-open', 'no-scroll', 'noscroll', 'overflow-hidden');
+      document.documentElement.style.overflow = '';
+    }
+
+    // Run immediately
+    closePopups();
+
+    // Run after short delays to catch popups that appear after page load
+    setTimeout(closePopups, 500);
+    setTimeout(closePopups, 1000);
+    setTimeout(closePopups, 2000);
+    setTimeout(closePopups, 3000);
+    setTimeout(closePopups, 5000);
+
+    // Watch for new popups via MutationObserver
+    var popupObserver = new MutationObserver(function(mutations) {
+      var shouldCheck = false;
+      mutations.forEach(function(m) {
+        if (m.addedNodes.length > 0) shouldCheck = true;
+        if (m.type === 'attributes' && (m.attributeName === 'class' || m.attributeName === 'style')) shouldCheck = true;
+      });
+      if (shouldCheck) {
+        setTimeout(closePopups, 100);
+      }
+    });
+
+    popupObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
+
+    // Also intercept common popup JS libraries
+    try {
+      // Block window.alert and window.confirm in the webview
+      window.alert = function() { return true; };
+      window.confirm = function() { return true; };
+    } catch(e) {}
+
     true;
   })();
 `;
