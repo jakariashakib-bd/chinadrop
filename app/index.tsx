@@ -13,20 +13,25 @@ import {
   ActivityIndicator,
   Linking,
 } from "react-native";
-import { WebView, WebViewNavigation } from "react-native-webview";
-import type { WebViewErrorEvent, WebViewProgressEvent } from "react-native-webview/lib/WebViewTypes";
-import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
+import NetInfo from "@react-native-community/netinfo";
+import type { NetInfoState } from "@react-native-community/netinfo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+// Conditionally import WebView only on native platforms
+let WebView: React.ComponentType<any> | null = null;
+if (Platform.OS !== "web") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  WebView = require("react-native-webview").WebView;
+}
 
 const WEBSITE_URL = "https://chinadropbd.com/";
 const BRAND_RED = "#E53935";
 const BRAND_ORANGE = "#FF5722";
 const CHARCOAL = "#212121";
-// Screen dimensions available for layout
 
-// JavaScript to inject into WebView for better UX
+// JavaScript to inject into WebView for better UX (native only)
 const INJECTED_JS = `
   (function() {
     // Disable long press context menu for native feel
@@ -48,7 +53,8 @@ const INJECTED_JS = `
 `;
 
 export default function MainScreen() {
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<any>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const insets = useSafeAreaInsets();
   const [canGoBack, setCanGoBack] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(true);
@@ -61,6 +67,8 @@ export default function MainScreen() {
   const progressAnim = useRef(new RNAnimated.Value(0)).current;
   const progressOpacity = useRef(new RNAnimated.Value(1)).current;
 
+  const isWeb = Platform.OS === "web";
+
   // Network connectivity monitoring
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
@@ -68,13 +76,20 @@ export default function MainScreen() {
       setIsConnected(connected);
       if (connected && hasError) {
         setHasError(false);
-        webViewRef.current?.reload();
+        if (isWeb) {
+          // Reload iframe on web
+          if (iframeRef.current) {
+            iframeRef.current.src = currentUrl;
+          }
+        } else {
+          webViewRef.current?.reload();
+        }
       }
     });
     return () => unsubscribe();
-  }, [hasError]);
+  }, [hasError, isWeb, currentUrl]);
 
-  // Android hardware back button
+  // Android hardware back button (native only)
   useEffect(() => {
     if (Platform.OS !== "android") return;
 
@@ -109,12 +124,12 @@ export default function MainScreen() {
     }
   }, [loadProgress, progressAnim, progressOpacity]);
 
-  const onNavigationStateChange = useCallback((navState: WebViewNavigation) => {
+  const onNavigationStateChange = useCallback((navState: { canGoBack: boolean; url: string }) => {
     setCanGoBack(navState.canGoBack);
     setCurrentUrl(navState.url);
   }, []);
 
-  const onLoadProgress = useCallback((event: WebViewProgressEvent) => {
+  const onLoadProgress = useCallback((event: { nativeEvent: { progress: number } }) => {
     setLoadProgress(event.nativeEvent.progress);
   }, []);
 
@@ -128,7 +143,7 @@ export default function MainScreen() {
     setRefreshing(false);
   }, []);
 
-  const onError = useCallback((event: WebViewErrorEvent) => {
+  const onError = useCallback(() => {
     setHasError(true);
     setIsLoading(false);
     setRefreshing(false);
@@ -136,14 +151,27 @@ export default function MainScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    webViewRef.current?.reload();
-  }, []);
+    if (isWeb) {
+      if (iframeRef.current) {
+        iframeRef.current.src = currentUrl;
+      }
+      setRefreshing(false);
+    } else {
+      webViewRef.current?.reload();
+    }
+  }, [isWeb, currentUrl]);
 
   const handleRetry = useCallback(() => {
     setHasError(false);
     setIsLoading(true);
-    webViewRef.current?.reload();
-  }, []);
+    if (isWeb) {
+      if (iframeRef.current) {
+        iframeRef.current.src = currentUrl;
+      }
+    } else {
+      webViewRef.current?.reload();
+    }
+  }, [isWeb, currentUrl]);
 
   const handleShouldStartLoadWithRequest = useCallback((request: { url: string }) => {
     const { url } = request;
@@ -182,7 +210,20 @@ export default function MainScreen() {
     outputRange: ["0%", "100%"],
   });
 
-  // Offline screen
+  // Handle iframe load events for web
+  const handleIframeLoad = useCallback(() => {
+    setIsLoading(false);
+    setRefreshing(false);
+    setLoadProgress(1);
+  }, []);
+
+  const handleIframeError = useCallback(() => {
+    setHasError(true);
+    setIsLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  // Offline / error screen
   if (isConnected === false || hasError) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -219,6 +260,58 @@ export default function MainScreen() {
     );
   }
 
+  // Web platform: render iframe
+  if (isWeb) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" backgroundColor="#FFFFFF" />
+
+        {/* Progress bar */}
+        <RNAnimated.View
+          style={[
+            styles.progressBarContainer,
+            { opacity: progressOpacity },
+          ]}
+        >
+          <RNAnimated.View
+            style={[
+              styles.progressBar,
+              { width: progressWidth },
+            ]}
+          />
+        </RNAnimated.View>
+
+        {/* Iframe for web */}
+        <View style={styles.scrollView}>
+          {React.createElement("iframe", {
+            ref: iframeRef,
+            src: currentUrl,
+            onLoad: handleIframeLoad,
+            onError: handleIframeError,
+            style: {
+              flex: 1,
+              width: "100%",
+              height: "100%",
+              border: "none",
+              backgroundColor: "#FFFFFF",
+            },
+            allow: "geolocation; camera; microphone; payment",
+            sandbox: "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation",
+          })}
+        </View>
+
+        {/* Loading overlay for initial load */}
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={BRAND_RED} />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // Native platform: render WebView
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" backgroundColor="#FFFFFF" />
@@ -252,51 +345,58 @@ export default function MainScreen() {
         }
         style={styles.scrollView}
       >
-        <WebView
-          ref={webViewRef}
-          source={{ uri: currentUrl }}
-          style={styles.webView}
-          onNavigationStateChange={onNavigationStateChange}
-          onLoadProgress={onLoadProgress}
-          onLoadStart={onLoadStart}
-          onLoadEnd={onLoadEnd}
-          onError={onError}
-          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-          injectedJavaScript={INJECTED_JS}
-          // Core settings
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          thirdPartyCookiesEnabled={true}
-          sharedCookiesEnabled={true}
-          // Media
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo={true}
-          // File handling
-          allowFileAccess={true}
-          allowFileAccessFromFileURLs={true}
-          allowUniversalAccessFromFileURLs={true}
-          // Performance
-          cacheEnabled={true}
-          cacheMode="LOAD_DEFAULT"
-          // UX
-          startInLoadingState={false}
-          scalesPageToFit={true}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          // User agent
-          applicationNameForUserAgent="ChinaDropApp/1.0"
-          // Scroll settings for pull-to-refresh compatibility
-          nestedScrollEnabled={true}
-          scrollEnabled={true}
-          // Mixed content for legacy pages
-          mixedContentMode="compatibility"
-          // Geolocation
-          geolocationEnabled={true}
-          // Text zoom
-          textZoom={100}
-        />
+        {WebView ? (
+          <WebView
+            ref={webViewRef}
+            source={{ uri: currentUrl }}
+            style={styles.webView}
+            onNavigationStateChange={onNavigationStateChange}
+            onLoadProgress={onLoadProgress}
+            onLoadStart={onLoadStart}
+            onLoadEnd={onLoadEnd}
+            onError={onError}
+            onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+            injectedJavaScript={INJECTED_JS}
+            // Core settings
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            sharedCookiesEnabled={true}
+            // Media
+            allowsInlineMediaPlayback={true}
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo={true}
+            // File handling
+            allowFileAccess={true}
+            allowFileAccessFromFileURLs={true}
+            allowUniversalAccessFromFileURLs={true}
+            // Performance
+            cacheEnabled={true}
+            cacheMode="LOAD_DEFAULT"
+            // UX
+            startInLoadingState={false}
+            scalesPageToFit={true}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            // User agent
+            applicationNameForUserAgent="ChinaDropApp/1.0"
+            // Scroll settings for pull-to-refresh compatibility
+            nestedScrollEnabled={true}
+            scrollEnabled={true}
+            // Mixed content for legacy pages
+            mixedContentMode="compatibility"
+            // Geolocation
+            geolocationEnabled={true}
+            // Text zoom
+            textZoom={100}
+          />
+        ) : (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={BRAND_RED} />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Loading overlay for initial load */}

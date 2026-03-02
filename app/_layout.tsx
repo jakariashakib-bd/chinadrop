@@ -17,9 +17,12 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 
-SplashScreen.preventAutoHideAsync();
-
-// Screen dimensions available for layout calculations
+// Safely prevent auto-hide - may throw on web
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch {
+  // Ignore on platforms where splash screen is not available
+}
 
 export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
