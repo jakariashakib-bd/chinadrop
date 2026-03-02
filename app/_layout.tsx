@@ -6,7 +6,6 @@ import {
   View,
   StyleSheet,
   Image,
-  Platform,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -100,20 +99,7 @@ export default function RootLayout() {
                 style={styles.splashLogo}
                 resizeMode="contain"
               />
-              <View style={styles.brandTextContainer}>
-                <Animated.Text style={[styles.brandName]}>
-                  China Drop
-                </Animated.Text>
-                <Animated.Text style={[styles.brandTagline]}>
-                  Your Wholesale Partner
-                </Animated.Text>
-              </View>
             </Animated.View>
-          </View>
-          <View style={styles.splashFooter}>
-            <Animated.Text style={styles.footerText}>
-              Powered by ChinaDrop BD
-            </Animated.Text>
           </View>
         </Animated.View>
       )}
@@ -142,35 +128,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   splashLogo: {
-    width: 160,
-    height: 160,
-    borderRadius: 32,
-  },
-  brandTextContainer: {
-    marginTop: 24,
-    alignItems: "center",
-  },
-  brandName: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: "#E53935",
-    letterSpacing: 1,
-  },
-  brandTagline: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#757575",
-    marginTop: 6,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  splashFooter: {
-    paddingBottom: Platform.OS === "android" ? 40 : 50,
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#BDBDBD",
-    letterSpacing: 1,
+    width: 280,
+    height: 280,
   },
 });

@@ -13,17 +13,21 @@ import {
   ActivityIndicator,
   Linking,
 } from "react-native";
-import NetInfo from "@react-native-community/netinfo";
-import type { NetInfoState } from "@react-native-community/netinfo";
+import * as Network from "expo-network";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 // Conditionally import WebView only on native platforms
-let WebView: React.ComponentType<any> | null = null;
+let NativeWebView: React.ComponentType<any> | null = null;
 if (Platform.OS !== "web") {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  WebView = require("react-native-webview").WebView;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const webViewModule = require("react-native-webview");
+    NativeWebView = webViewModule.WebView || webViewModule.default || null;
+  } catch (e) {
+    console.warn("Failed to load react-native-webview:", e);
+  }
 }
 
 const WEBSITE_URL = "https://chinadropbd.com/";
@@ -188,24 +192,43 @@ export default function MainScreen() {
 
   const isWeb = Platform.OS === "web";
 
-  // Network connectivity monitoring
+  // Network connectivity monitoring using expo-network
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-      const connected = state.isConnected ?? false;
-      setIsConnected(connected);
-      if (connected && hasError) {
-        setHasError(false);
-        if (isWeb) {
-          // Reload iframe on web
-          if (iframeRef.current) {
-            iframeRef.current.src = currentUrl;
+    let isMounted = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const checkNetwork = async () => {
+      try {
+        const networkState = await Network.getNetworkStateAsync();
+        if (!isMounted) return;
+        const connected = networkState.isConnected ?? false;
+        setIsConnected(connected);
+        if (connected && hasError) {
+          setHasError(false);
+          if (isWeb) {
+            if (iframeRef.current) {
+              iframeRef.current.src = currentUrl;
+            }
+          } else {
+            webViewRef.current?.reload();
           }
-        } else {
-          webViewRef.current?.reload();
         }
+      } catch {
+        // If network check fails, assume connected
+        if (isMounted) setIsConnected(true);
       }
-    });
-    return () => unsubscribe();
+    };
+
+    // Initial check
+    checkNetwork();
+
+    // Poll every 5 seconds for connectivity changes
+    intervalId = setInterval(checkNetwork, 5000);
+
+    return () => {
+      isMounted = false;
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [hasError, isWeb, currentUrl]);
 
   // Android hardware back button (native only)
@@ -464,8 +487,8 @@ export default function MainScreen() {
         }
         style={styles.scrollView}
       >
-        {WebView ? (
-          <WebView
+        {NativeWebView ? (
+          <NativeWebView
             ref={webViewRef}
             source={{ uri: currentUrl }}
             style={styles.webView}
@@ -511,9 +534,18 @@ export default function MainScreen() {
             textZoom={100}
           />
         ) : (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={BRAND_RED} />
-            <Text style={styles.loadingText}>Loading...</Text>
+          <View style={styles.webViewFallback}>
+            <MaterialCommunityIcons name="web" size={48} color={BRAND_RED} />
+            <Text style={styles.fallbackTitle}>Unable to Load</Text>
+            <Text style={styles.fallbackSubtitle}>WebView component is not available.</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={handleRetry}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -634,5 +666,26 @@ const styles = StyleSheet.create({
     color: "#E0E0E0",
     fontWeight: "600",
     letterSpacing: 2,
+  },
+  // WebView fallback when component unavailable
+  webViewFallback: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+    backgroundColor: "#FFFFFF",
+  },
+  fallbackTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: CHARCOAL,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  fallbackSubtitle: {
+    fontSize: 14,
+    color: "#757575",
+    textAlign: "center",
+    marginBottom: 24,
   },
 });
